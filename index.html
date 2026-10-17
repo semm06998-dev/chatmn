@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FriendChat</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{font-family:Inter,system-ui,Arial,sans-serif;color:#172033;background:#eef2f8}
+*{box-sizing:border-box}body{margin:0;min-height:100vh}button,input{font:inherit}
+button{cursor:pointer;border:0;border-radius:10px;padding:10px 14px;background:#2563eb;color:#fff;font-weight:650}
+button:disabled{opacity:.5;cursor:not-allowed}.muted{color:#718096;font-size:.9rem}
+.shell{max-width:1100px;margin:24px auto;padding:0 14px}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.brand{font-size:1.45rem;font-weight:800;color:#1d4ed8}.panel{background:white;border-radius:18px;box-shadow:0 8px 30px #17203312}
+.auth{max-width:420px;margin:8vh auto;padding:28px}.auth h1{margin-top:0}
+.field{display:block;width:100%;padding:12px;border:1px solid #d9e1ee;border-radius:10px;margin:8px 0 14px;background:white}
+.auth-actions{display:flex;gap:8px}.auth-actions button{flex:1}
+#status{min-height:22px;color:#b42318;font-size:.9rem;margin:8px 0}
+.chat-layout{display:grid;grid-template-columns:290px minmax(0,1fr);height:min(76vh,760px);min-height:500px;overflow:hidden}
+.sidebar{border-right:1px solid #e8edf5;padding:16px;overflow:auto}.mainchat{display:flex;flex-direction:column;min-width:0}
+.searchrow{display:flex;gap:7px}.searchrow input{min-width:0;flex:1}
+.userlist{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+.userbtn{display:block;text-align:left;width:100%;background:#f3f6fb;color:#172033;font-weight:600}
+.userbtn.active{background:#dbeafe;color:#1d4ed8}
+.chathead{padding:16px;border-bottom:1px solid #e8edf5;font-weight:750}
+.messages{padding:18px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:10px;background:#f8faff}
+.msg{max-width:78%;align-self:flex-start;background:white;padding:10px 12px;border-radius:14px 14px 14px 4px;box-shadow:0 2px 6px #1720330b;overflow-wrap:anywhere}
+.msg.mine{align-self:flex-end;background:#dbeafe;border-radius:14px 14px 4px 14px}
+.msg img{display:block;max-width:min(100%,300px);max-height:300px;border-radius:9px;margin-top:6px}
+.time{display:block;font-size:.72rem;color:#64748b;margin-top:5px}
+.composer{padding:12px;display:flex;gap:8px;align-items:center;border-top:1px solid #e8edf5}
+.composer input[type=text]{flex:1;min-width:0}.composer .field{margin:0}
+#photo{display:none}.empty{margin:auto;text-align:center;color:#718096;padding:25px}
+.hidden{display:none!important}
+@media(max-width:680px){.shell{margin:12px auto}.chat-layout{grid-template-columns:115px minmax(0,1fr);height:78vh;min-height:480px}.sidebar{padding:9px}.sidebar .field{padding:9px 7px;font-size:.85rem}.searchrow{flex-direction:column}.userbtn{padding:9px 7px;font-size:.82rem}.composer{flex-wrap:wrap}.composer .field{width:100%;order:3}.msg{max-width:92%}.auth{margin:4vh auto;padding:22px}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="top"><div class="brand">✦ FriendChat</div><div id="topUser" class="muted"></div></div>
+  <section id="authPanel" class="panel auth">
+    <h1 id="authTitle">Welcome back</h1>
+    <p class="muted">A simple place to message your friends.</p>
+    <label for="username">Username (for sign up)</label>
+    <input class="field" id="username" placeholder="e.g. semagn" autocomplete="username">
+    <label for="email">Email</label>
+    <input class="field" id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    <label for="password">Password</label>
+    <input class="field" id="password" type="password" placeholder="At least 6 characters" autocomplete="current-password">
+    <div class="auth-actions"><button id="loginBtn">Log in</button><button id="signupBtn">Create account</button></div>
+    <div id="status" role="status"></div>
+    <p class="muted">First, add your Supabase project URL and publishable key in this file.</p>
+  </section>
+  <section id="appPanel" class="panel chat-layout hidden">
+    <aside class="sidebar">
+      <strong>Find friends</strong>
+      <p class="muted">Search by username</p>
+      <div class="searchrow"><input id="userSearch" class="field" placeholder="Username"><button id="searchBtn">Find</button></div>
+      <div id="userList" class="userlist"></div>
+      <hr style="border:0;border-top:1px solid #e8edf5;margin:18px 0">
+      <button id="logoutBtn" style="background:#64748b;width:100%">Log out</button>
+    </aside>
+    <main class="mainchat">
+      <div id="chatHead" class="chathead">Choose a friend to start chatting</div>
+      <div id="messages" class="messages"><div class="empty">Search for a username to start a conversation.</div></div>
+      <form id="composer" class="composer">
+        <label for="photo" title="Attach photo" style="cursor:pointer;font-size:1.4rem">📎</label>
+        <input id="photo" type="file" accept="image/*">
+        <input id="messageText" class="field" type="text" maxlength="4000" placeholder="Write a message..." autocomplete="off" disabled>
+        <button id="sendBtn" type="submit" disabled>Send</button>
+      </form>
+      <div id="chatStatus" class="muted" style="padding:0 14px 10px"></div>
+    </main>
+  </section>
+</div>
+<script>
+/* 1) Replace these with the URL and publishable key from Supabase > Project Settings > API. */
+const SUPABASE_URL = "https://xhmdrwropygwcxxeigrr.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_pzY6tnhPdU8aBPy0wpknAA_e-RNyZz7";
+
+const $ = id => document.getElementById(id);
+let db, currentUser, activeFriend, activeConversation, realtimeChannel;
+let messageIds = new Set();
+
+function status(message, isError=true){ $("status").textContent=message; $("status").style.color=isError?"#b42318":"#167747"; }
+function chatStatus(message){ $("chatStatus").textContent=message; }
+function escapeText(value){ return String(value ?? ""); }
+
+async function init(){
+  if(SUPABASE_URL.includes("YOUR_") || SUPABASE_PUBLISHABLE_KEY.includes("YOUR_")){
+    status("Setup needed: add your Supabase project URL and publishable key in index.html."); return;
+  }
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+  const {data:{session}} = await db.auth.getSession();
+  if(session) await showApp(session.user);
+}
+async function showApp(user){
+  currentUser=user;
+  $("authPanel").classList.add("hidden"); $("appPanel").classList.remove("hidden");
+  const {data:profile}=await db.from("profiles").select("username").eq("id",user.id).maybeSingle();
+  $("topUser").textContent=profile?.username ? "@"+profile.username : user.email;
+}
+async function signUp(){
+  const username=$("username").value.trim().toLowerCase();
+  const email=$("email").value.trim(); const password=$("password").value;
+  if(!/^[a-z0-9_]{3,24}$/.test(username)){status("Username must be 3–24 characters: letters, numbers, underscores.");return;}
+  if(!email || password.length<6){status("Enter a valid email and a password with at least 6 characters.");return;}
+  const {error}=await db.auth.signUp({email,password,options:{data:{username}}});
+  if(error){status(error.message);return;}
+  status("Account created. If email confirmation is enabled, confirm your email, then log in.",false);
+}
+async function login(){
+  const {data,error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
+  if(error){status(error.message);return;} status("",false); await showApp(data.user);
+}
+async function logout(){
+  if(realtimeChannel) await db.removeChannel(realtimeChannel);
+  await db.auth.signOut(); location.reload();
+}
+async function searchUsers(){
+  const term=$("userSearch").value.trim().toLowerCase();
+  if(term.length<2){chatStatus("Enter at least 2 characters.");return;}
+  const {data,error}=await db.from("profiles").select("id,username").ilike("username",`%${term}%`).neq("id",currentUser.id).limit(20);
+  if(error){chatStatus(error.message);return;}
+  const list=$("userList"); list.replaceChildren();
+  if(!data.length){const p=document.createElement("p");p.className="muted";p.textContent="No users found.";list.append(p);return;}
+  for(const person of data){
+    const b=document.createElement("button");b.className="userbtn";b.textContent="@"+person.username;
+    b.onclick=()=>openConversation(person);list.append(b);
+  }
+}
+async function openConversation(friend){
+  activeFriend=friend; activeConversation=null; messageIds.clear();
+  $("chatHead").textContent="@"+friend.username;
+  $("messageText").disabled=false;$("sendBtn").disabled=false;
+  [...$("userList").children].forEach(b=>b.classList.toggle("active",b.textContent==="@"+friend.username));
+  if(realtimeChannel){await db.removeChannel(realtimeChannel);realtimeChannel=null;}
+  chatStatus("Opening conversation…");
+  const {data:existing,error:findError}=await db.from("conversations").select("id")
+    .or(`and(user1.eq.${currentUser.id},user2.eq.${friend.id}),and(user1.eq.${friend.id},user2.eq.${currentUser.id})`).maybeSingle();
+  if(findError){chatStatus(findError.message);return;}
+  if(existing) activeConversation=existing.id;
+  else{
+    const {data:created,error}=await db.from("conversations")
+      .insert({user1:currentUser.id,user2:friend.id}).select("id").single();
+    if(error){chatStatus(error.message);return;} activeConversation=created.id;
+  }
+  await loadMessages();
+  realtimeChannel=db.channel("chat-"+activeConversation)
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`conversation_id=eq.${activeConversation}`},payload=>{
+      renderMessage(payload.new);
+    }).subscribe();
+  chatStatus("Messages are private to the two conversation participants.");
+}
+async function loadMessages(){
+  const {data,error}=await db.from("messages").select("*").eq("conversation_id",activeConversation).order("created_at",{ascending:true}).limit(200);
+  if(error){chatStatus(error.message);return;}
+  $("messages").replaceChildren();messageIds.clear();
+  for(const m of data) await renderMessage(m);
+  $("messages").scrollTop=$("messages").scrollHeight;
+}
+async function renderMessage(m){
+  if(messageIds.has(m.id)) return; messageIds.add(m.id);
+  const wrap=document.createElement("div");wrap.className="msg"+(m.sender_id===currentUser.id?" mine":"");
+  if(m.body){const text=document.createElement("div");text.textContent=m.body;wrap.append(text);}
+  if(m.image_path){
+    const {data,error}=await db.storage.from("chat-photos").createSignedUrl(m.image_path,3600);
+    if(!error && data?.signedUrl){const img=document.createElement("img");img.src=data.signedUrl;img.alt="Shared photo";img.loading="lazy";wrap.append(img);}
+  }
+  const time=document.createElement("span");time.className="time";time.textContent=new Date(m.created_at).toLocaleString();wrap.append(time);
+  $("messages").append(wrap);$("messages").scrollTop=$("messages").scrollHeight;
+}
+async function sendMessage(event){
+  event.preventDefault(); if(!activeConversation){chatStatus("Choose a friend first.");return;}
+  const body=$("messageText").value.trim();const file=$("photo").files[0];
+  if(!body && !file)return;
+  if(file && !file.type.startsWith("image/")){chatStatus("Please choose an image file.");return;}
+  if(file && file.size>5*1024*1024){chatStatus("Please choose an image smaller than 5 MB.");return;}
+  $("sendBtn").disabled=true;chatStatus("Sending…");
+  let image_path=null;
+  try{
+    if(file){
+      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      image_path=`${activeConversation}/${currentUser.id}_${Date.now()}_${safeName}`;
+      const {error:uploadError}=await db.storage.from("chat-photos").upload(image_path,file,{upsert:false,contentType:file.type});
+      if(uploadError)throw uploadError;
+    }
+    const {error}=await db.from("messages").insert({conversation_id:activeConversation,sender_id:currentUser.id,body:body||null,image_path});
+    if(error)throw error;
+    $("messageText").value="";$("photo").value="";chatStatus("");
+  }catch(e){chatStatus(e.message||"Could not send message.");}
+  finally{$("sendBtn").disabled=false;}
+}
+$("loginBtn").onclick=login;$("signupBtn").onclick=signUp;$("logoutBtn").onclick=logout;
+$("searchBtn").onclick=searchUsers;$("userSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();searchUsers();}});
+$("composer").addEventListener("submit",sendMessage);
+dbAuthListener();
+function dbAuthListener(){
+  // Keep the screen in sync if the session expires or the user logs out.
+  if(window.supabase && !SUPABASE_URL.includes("YOUR_")){
+    const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+    client.auth.onAuthStateChange((event,session)=>{
+      if(event==="SIGNED_OUT"){currentUser=null;$("appPanel").classList.add("hidden");$("authPanel").classList.remove("hidden");}
+    });
+  }
+}
+init();
+</script>
+</body>
+</html>
